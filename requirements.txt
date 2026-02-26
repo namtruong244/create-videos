@@ -1,0 +1,15 @@
+# --- Xử lý Video và Hình ảnh lõi ---
+moviepy==1.0.3
+opencv-python>=4.8.0
+mediapipe>=0.10.0
+Pillow>=10.0.0
+numpy>=1.24.0
+
+# --- Tải Video tự động ---
+yt-dlp>=2023.10.13
+
+# --- Google API (Sheets & Drive) ---
+gspread>=5.11.0
+google-api-python-client>=2.100.0
+google-auth-httplib2>=0.1.1
+google-auth-oauthlib>=1.1.0
