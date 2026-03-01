@@ -7,7 +7,7 @@ from modules.utils import setup_directories, cleanup_directory
 from modules.video_processor import process_single_clip
 from modules.video_merger import merge_clips_task
 from modules.downloader import download_video
-from modules.google_services import get_tasks_from_sheet, upload_video_to_drive, update_row_status
+from modules.google_services import get_tasks_from_sheet, upload_video_to_drive, update_row_status, create_drive_folder, update_row_folder_link, update_row_direct_links
 
 
 def main():
@@ -62,7 +62,9 @@ def main():
             all_possible_videos = list(itertools.combinations(all_15s_clips, 4))
             random.shuffle(all_possible_videos)
 
-            actual_target = min(random.randint(20, 30), len(all_possible_videos))
+            target_videos = 30
+
+            actual_target = min(target_videos, len(all_possible_videos))
 
             combo_tasks = []
             for i, combo in enumerate(all_possible_videos[:actual_target]):
@@ -73,17 +75,41 @@ def main():
 
             print(f"[Hệ thống] Hoàn thành render {actual_target} video cho '{product_text}'.")
 
-            output_files = [f for f in os.listdir(OUTPUT_DIR) if f.endswith('.mp4')]
-            for out_file in output_files:
-                file_path = os.path.join(OUTPUT_DIR, out_file)
-                # Đổi tên file để dễ quản lý trên Drive (VD: Váy_Nữ_Xếp_Ly_video_0.mp4)
-                safe_product_name = product_text.replace(" ", "_")
-                new_file_path = os.path.join(OUTPUT_DIR, f"{safe_product_name}_{out_file}")
-                os.rename(file_path, new_file_path)
+            print(f"\n[Hệ thống] Bắt đầu đẩy video của '{product_text}' lên Drive...")
 
-                upload_video_to_drive(new_file_path, DRIVE_FOLDER_ID)
+            # Xử lý tên thư mục an toàn (bỏ các ký tự dễ gây lỗi hệ thống)
+            safe_product_name = product_text.replace("/", "_").replace("\\", "_")
 
-            update_row_status(SHEET_ID, row_idx, f"Done ({actual_target} videos)")
+            # 1. Tạo folder con dành riêng cho sản phẩm này
+            sub_folder_id, sub_folder_link = create_drive_folder(safe_product_name, DRIVE_FOLDER_ID)
+
+            if sub_folder_id:
+                output_files = [f for f in os.listdir(OUTPUT_DIR) if f.endswith('.mp4')]
+                direct_download_links = []  # Tạo mảng chứa link tải trực tiếp
+
+                for out_file in output_files:
+                    file_path = os.path.join(OUTPUT_DIR, out_file)
+                    new_file_path = os.path.join(OUTPUT_DIR, f"{safe_product_name}_{out_file}")
+                    os.rename(file_path, new_file_path)
+
+                    # Lấy ID file trả về
+                    file_id, view_link = upload_video_to_drive(new_file_path, sub_folder_id)
+
+                    if file_id:
+                        # Tạo link tải trực tiếp (Direct Link) thần thánh của Google Drive
+                        direct_link = f"https://drive.google.com/uc?export=download&id={file_id}"
+                        direct_download_links.append(direct_link)
+
+                # Gộp các link lại, cách nhau bằng dấu Xuống dòng (\n)
+                all_links_str = "\n".join(direct_download_links)
+
+                # Cập nhật Sheet
+                update_row_status(SHEET_ID, row_idx, f"Done ({actual_target} videos)") # Cot F
+                update_row_folder_link(SHEET_ID, row_idx, sub_folder_link)  # Cột C
+                update_row_direct_links(SHEET_ID, row_idx, all_links_str)  # Cột D (MỚI)
+
+            else:
+                update_row_status(SHEET_ID, row_idx, "Lỗi: Không tạo được thư mục trên Drive")
 
         else:
             update_row_status(SHEET_ID, row_idx, "Error: Không đủ clip 15s")
