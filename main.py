@@ -1,6 +1,7 @@
 import os
 import random
 import itertools
+import uuid
 import concurrent.futures
 from config import INPUT_DIR, TEMP_DIR, OUTPUT_DIR, SHEET_ID, DRIVE_FOLDER_ID
 from modules.utils import setup_directories, cleanup_directory
@@ -62,7 +63,7 @@ def main():
             all_possible_videos = list(itertools.combinations(all_15s_clips, 4))
             random.shuffle(all_possible_videos)
 
-            target_videos = 30
+            target_videos = 17
 
             actual_target = min(target_videos, len(all_possible_videos))
 
@@ -81,7 +82,7 @@ def main():
             safe_product_name = product_text.replace("/", "_").replace("\\", "_")
 
             # 1. Tạo folder con dành riêng cho sản phẩm này
-            sub_folder_id, sub_folder_link = create_drive_folder(safe_product_name, DRIVE_FOLDER_ID)
+            sub_folder_id, sub_folder_link = create_drive_folder(uuid.uuid4().hex, DRIVE_FOLDER_ID)
 
             if sub_folder_id:
                 output_files = [f for f in os.listdir(OUTPUT_DIR) if f.endswith('.mp4')]
