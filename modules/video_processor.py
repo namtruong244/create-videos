@@ -1,8 +1,10 @@
 import os
+import random
+
 import cv2
 import mediapipe as mp
 from moviepy.editor import VideoFileClip
-from config import INPUT_DIR, TEMP_DIR, ICON_PATH
+from config import INPUT_DIR, TEMP_DIR, ICONS_DIR
 from modules.utils import overlay_transparent
 import moviepy.video.fx.all as vfx
 
@@ -11,10 +13,21 @@ def process_single_clip(file_name):
     print(f"[Hệ thống]: Đang tiếp nhận và xử lý gốc - {file_name}")
     input_path = os.path.join(INPUT_DIR, file_name)
 
-    # Chuẩn bị icon
-    icon_img_bgra = cv2.imread(ICON_PATH, cv2.IMREAD_UNCHANGED)
+    # ================= 1. RANDOM ICON CHE MẶT =================
+    # Quét tất cả file .png trong thư mục ICONS_DIR và bốc thăm 1 cái
+    icon_list = [f for f in os.listdir(ICONS_DIR) if f.endswith('.png')]
+    if not icon_list:
+        print("[Lỗi]: Thư mục icons trống! Vui lòng thêm ảnh .png vào.")
+        return []
+
+    random_icon_name = random.choice(icon_list)
+    current_icon_path = os.path.join(ICONS_DIR, random_icon_name)
+    print(f"[*] Đã bốc thăm Icon: {random_icon_name}")
+
+    # Đọc icon đã chọn
+    icon_img_bgra = cv2.imread(current_icon_path, cv2.IMREAD_UNCHANGED)
     if icon_img_bgra is None or icon_img_bgra.shape[2] != 4:
-        print(f"[Cảnh báo]: File {ICON_PATH} lỗi hoặc thiếu kênh Alpha. Bỏ qua.")
+        print(f"[Cảnh báo]: Icon {random_icon_name} lỗi hoặc thiếu kênh Alpha. Bỏ qua.")
         return []
     icon_img = cv2.cvtColor(icon_img_bgra, cv2.COLOR_BGRA2RGBA)
 
@@ -30,21 +43,48 @@ def process_single_clip(file_name):
     try:
         clip = VideoFileClip(input_path).without_audio()
 
-        # ================= THÊM BƯỚC PHÓNG TO & CẮT TÂM =================
-        original_w, original_h = clip.w, clip.h
-        zoom_factor = 1.15
-        zoomed_clip = clip.resize(zoom_factor)
+        # ================= THÊM BƯỚC XỬ LÝ TỶ LỆ CHỐNG MÉO HÌNH =================
+        target_w, target_h = 1080, 1920
+        target_ratio = target_w / target_h
+        current_ratio = clip.w / clip.h
 
-        clip_processed = zoomed_clip.crop(
-            x_center=zoomed_clip.w / 2,
-            y_center=zoomed_clip.h / 2,
-            width=original_w,
-            height=original_h
+        # 1. ÉP TỶ LỆ KHUNG HÌNH CHUẨN 9:16 (Loại bỏ viền đen/phần thừa)
+        # Cộng trừ 0.01 để bỏ qua các sai số làm tròn pixel siêu nhỏ
+        if current_ratio > target_ratio + 0.01:
+            # Trường hợp 1: Video quá bè ngang (VD: 16:9) -> Cắt bỏ 2 bên rìa trái/phải
+            new_w = int(clip.h * target_ratio)
+            clip_processed = clip.crop(x_center=clip.w / 2, y_center=clip.h / 2, width=new_w, height=clip.h)
+
+        elif current_ratio < target_ratio - 0.01:
+            # Trường hợp 2: Video quá cao (chứa viền đen trên dưới) -> Cắt bỏ phần thừa trên/dưới
+            new_h = int(clip.w / target_ratio)
+            clip_processed = clip.crop(x_center=clip.w / 2, y_center=clip.h / 2, width=clip.w, height=new_h)
+
+        else:
+            # Trường hợp 3: Video đã chuẩn tỷ lệ 9:16 -> Giữ nguyên
+            clip_processed = clip
+
+            # 2. LƯU LẠI KÍCH THƯỚC SAU KHI ĐÃ CHUẨN TỶ LỆ
+        base_w = clip_processed.w
+        base_h = clip_processed.h
+
+        # 3. PHÓNG TO (ZOOM 15%) ĐỂ LÁCH BẢN QUYỀN
+        zoom_factor = 1.15
+        clip_processed = clip_processed.resize(zoom_factor)
+
+        # 4. CẮT LẠI TÂM VỀ KÍCH THƯỚC BASE (Gọt bỏ phần hình bị zoom tràn ra ngoài)
+        clip_processed = clip_processed.crop(
+            x_center=clip_processed.w / 2,
+            y_center=clip_processed.h / 2,
+            width=base_w,
+            height=base_h
         )
 
         # ================= THÊM BƯỚC LẬT NGANG (MIRROR) =================
         print(f"[{file_name}] - Hệ thống: Đang lật ngang video (Mirror)...")
         clip_processed = clip_processed.fx(vfx.mirror_x)
+
+        clip_processed = clip_processed.resize((1080, 1920))
 
         # ================= CẤU HÌNH LÀM MƯỢT (SMOOTHING) =================
         tracked_faces = []

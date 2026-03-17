@@ -9,6 +9,8 @@ TEMP_DIR = "/Volumes/RAMDisk/processed_15s"
 OUTPUT_DIR = "/Volumes/RAMDisk/outputs"
 
 # Tài nguyên
+ICONS_DIR = "icons"  # Thư mục chứa các icon
+FONTS_DIR = "fonts"  # Thư mục chứa các font chữ
 ICON_PATH = os.path.join(BASE_DIR, "icon.png")
 FONT_PATH = os.path.join(BASE_DIR, "DancingScript.ttf")
 

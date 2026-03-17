@@ -3,7 +3,7 @@ import random
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from moviepy.editor import VideoFileClip, clips_array, vfx, CompositeVideoClip, ImageClip
-from config import OUTPUT_DIR, FONT_PATH, RENDER_CODEC
+from config import OUTPUT_DIR, RENDER_CODEC, FONTS_DIR
 
 def create_text_clip_pil(text, font_path, initial_font_size, color, stroke_color, stroke_width, duration,
                          max_width=1000):
@@ -92,19 +92,24 @@ def merge_clips_task(combo_data):
         c4 = VideoFileClip(clip_paths[3]).resize((540, 960))
 
         # Áp dụng filter chống bản quyền màu sắc
-        light_filter = lambda c: c.fx(vfx.colorx, random.uniform(0.95, 1.05))
-        c1, c2, c3, c4 = map(light_filter, [c1, c2, c3, c4])
+        c1, c2, c3, c4 = map(anti_copyright_color_filters, [c1, c2, c3, c4])
 
         # 2. Ghép thành lưới 2x2.
         # Tổng kích thước lúc này sẽ tự động khít 1080x1920
         final_grid = clips_array([[c1, c2], [c3, c4]])
 
-        font_absolute_path = os.path.abspath("DancingScript.ttf")
+        # ================= 2. RANDOM FONT CHỮ =================
+        # (Dành cho đoạn code bạn chèn chữ vào video sau này)
+        font_list = [f for f in os.listdir(FONTS_DIR) if f.endswith(('.ttf', '.otf'))]
+        random_font_path = ""
+        if font_list:
+            random_font_path = os.path.join(FONTS_DIR, random.choice(font_list))
+            print(f"[*] Đã bốc thăm Font: {os.path.basename(random_font_path)}")
 
         # 3. Tạo dòng chữ ở giữa
         txt_clip = create_text_clip_pil(
             text=dynamic_text,
-            font_path=font_absolute_path,
+            font_path=random_font_path,
             initial_font_size=80,
             color=(255, 255, 255),
             stroke_color=(0, 0, 0),
@@ -123,8 +128,10 @@ def merge_clips_task(combo_data):
         final_clip.write_videofile(
             out_path,
             codec=RENDER_CODEC,
+            preset="faster",
+            bitrate="8000k",
             audio=False,
-            bitrate="4000k",
+            threads=2,
             verbose=False,
             logger=None
         )
@@ -136,3 +143,35 @@ def merge_clips_task(combo_data):
         print(f"[Worker {combo_id}] - Hệ thống: Render thành công! Lưu tại {out_path}")
     except Exception as e:
         print(f"[Worker {combo_id}] - Lỗi: Không thể ghép video. Chi tiết: {e}")
+
+
+def anti_copyright_color_filters(clip):
+    """
+    Áp dụng 3 lớp filter MÀU SẮC lách bản quyền hình ảnh.
+    Cường độ cực nhẹ để giữ nguyên trải nghiệm thị giác.
+    """
+    # ================= LỚP 1: ĐỘ SÁNG (BRIGHTNESS) =================
+    # Phủ một lớp sáng/tối nhẹ lên toàn bộ khung hình (+/- 3%)
+    factor_color = random.uniform(0.97, 1.03)
+    clip = clip.fx(vfx.colorx, factor_color)
+
+    # ================= LỚP 2: ĐỘ SÂU MÀU (GAMMA) =================
+    # Điều chỉnh dải nhạy sáng trung gian (Mid-tones), làm sai lệch Histogram (+/- 4%)
+    factor_gamma = random.uniform(0.96, 1.04)
+    clip = clip.fx(vfx.gamma_corr, factor_gamma)
+
+    # ================= LỚP 3: ÁM MÀU VI PHÂN (RGB TINT) =================
+    # Tác động độc lập lên 3 kênh màu Đỏ (R), Xanh lá (G), Xanh dương (B) (+/- 2%)
+    # Đây là "sát thủ" lách bản quyền vì nó bẻ cong thông số từng điểm ảnh (pixel)
+    r_shift = random.uniform(0.98, 1.02)
+    g_shift = random.uniform(0.98, 1.02)
+    b_shift = random.uniform(0.98, 1.02)
+
+    def rgb_tint_filter(frame):
+        # Nhân ma trận màu và ép kiểu về uint8 (0-255) để giữ an toàn cho video
+        new_frame = frame * [r_shift, g_shift, b_shift]
+        return np.clip(new_frame, 0, 255).astype(np.uint8)
+
+    clip = clip.fl_image(rgb_tint_filter)
+
+    return clip
